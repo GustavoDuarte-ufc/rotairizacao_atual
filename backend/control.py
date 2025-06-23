@@ -1,6 +1,6 @@
 from backend.model import *
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import joinedload
 
 logging.basicConfig(level=logging.INFO)
@@ -33,11 +33,16 @@ def get_vehicles():
     
 def get_planning():
     with Session() as session:
-        planning = session.query(Planning).all()
+        planning = session.query(Planning)\
+            .options(
+                joinedload(Planning.depot),
+                joinedload(Planning.orders),
+                joinedload(Planning.routes)
+            ).all()
         for p in planning:
-            print(f"ID: {p.id}, {p.deadline}, {p.created_at}")
+            print(f"[DEBUG] Planning ID {p.id} | Depósito: {p.depot.name if p.depot else 'N/A'}")
         return planning
-
+    
 #ADD das tabelas
 def add_costumers(name: str, email: str, address: str, latitude: float, longitude: float):
     with Session() as session:
@@ -76,18 +81,26 @@ def add_vehicle(model: str, plate: str, capacity: int, cost_per_km: float, depot
         else:
             logger.info('Veículo ja existente')
 
+
 def add_planning(depot_id: int, deadline: datetime | None = None):
-    """
-    Adiciona um novo planejamento. O status inicial é 'pending'.
-    Retorna a instância do planejamento criado.
-    """
-    with Session() as session:
-        planning = Planning(depot_id=depot_id, deadline=deadline, status=PlanningStatus.pending) # type: ignore
+    try:
+        session = Session()
+
+        planning = Planning(
+            depot_id=depot_id,
+            deadline=deadline,
+            status=PlanningStatus.pending,
+            created_at=datetime.now(timezone.utc)
+        )
+
         session.add(planning)
         session.commit()
-        logger.info(f"Planejamento criado: id={planning.id} para depot id={depot_id}")
-        return planning
+        session.close()
 
+        print("Planning cadastrado com sucesso!")
+
+    except Exception as e:
+        print(f"Erro ao cadastrar planning: {e}")
 
 #UPT das tabelas
 def upd_customer(cust_id: int, new_name: str, new_email: str, new_address: str,

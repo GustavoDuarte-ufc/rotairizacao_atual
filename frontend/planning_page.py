@@ -63,11 +63,14 @@ def add_planning_dialog():
             deadline_time_in = ui.time(value=None).props('clearable')
 
         def save():
+            print(f"[DEBUG] depot: {depot_in.value}, deadline: {deadline_date_in.value} {deadline_time_in.value}")
             if not depot_in.value:
-                ui.notify("Depósito é obrigatório.", color="negative"); return
+                ui.notify("Depósito é obrigatório.", color="negative")
+                return
 
             deadline_dt = parse_datetime_from_input(deadline_date_in.value, deadline_time_in.value)
-
+            print(f"[DEBUG] Deadline convertido: {deadline_dt}")
+            
             add_planning(depot_id=depot_in.value, deadline=deadline_dt)
             refresh("Planejamento adicionado!")
             dialog.close()
