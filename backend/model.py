@@ -94,12 +94,21 @@ class Planning(Base):
     routes = relationship("Routes", back_populates="planning")
 
 # Define a table for routes
+
+class RouteStatus(Enum):
+    active = "active"
+    inactive = "inactive"
+    finished = "finished"
+
+from sqlalchemy import Enum as SQLEnum  # importe assim para evitar conflito com enum.Enum
+
 class Routes(Base):
     __tablename__ = "routes"
     id = Column(Integer, primary_key=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     distance = Column(Float, nullable=False, default=0.0)
     load = Column(Float, nullable=False, default=0.0)
+    status = Column(SQLEnum(RouteStatus), default=RouteStatus.active, nullable=False)  # <--- aqui
     vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
     vehicle = relationship("Vehicles", back_populates="routes")
     planning_id = Column(Integer, ForeignKey("planning.id"), nullable=False)
@@ -109,6 +118,7 @@ class Routes(Base):
         back_populates="route",
         order_by="Orders.sequence_position"
     )
+
 
 # Create all tables in the database if they don't exist
 Base.metadata.create_all(engine)

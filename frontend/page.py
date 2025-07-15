@@ -3,6 +3,8 @@ from frontend.customers_page import *
 from frontend.depots_page import *
 from frontend.planning_page import *
 from frontend.vehicle_page import *
+from frontend.order_page import *
+from frontend.routers_page import *
 
 def base_layout() -> ui.row:
     """
@@ -29,11 +31,15 @@ def base_layout() -> ui.row:
                     with ui.row().classes('items-center no-wrap w-full justify-start gap-2'):
                         ui.icon('people')
                         ui.label('Clientes')
+                with ui.menu_item(on_click=lambda: router_page(main_container)):
+                    with ui.row().classes('items-center no-wrap w-full justify-start gap-2'):
+                        ui.icon('people')
+                        ui.label('Clientes')
                 with ui.menu_item(on_click=lambda: vehicle_page(main_container)):
                     with ui.row().classes('items-center no-wrap w-full justify-start gap-2'):
                         ui.icon('local_shipping')
                         ui.label('Veículos')
-                with ui.menu_item():
+                with ui.menu_item(on_click=lambda: order_page(main_container)):
                     with ui.row().classes('items-center no-wrap w-full justify-start gap-2'):
                         ui.icon('shopping_cart')
                         ui.label('Pedidos')

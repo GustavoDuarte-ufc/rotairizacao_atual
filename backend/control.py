@@ -1,5 +1,6 @@
 from backend.model import *
 import logging
+from typing import Optional
 from datetime import datetime, timezone
 from sqlalchemy.orm import joinedload
 
@@ -43,6 +44,27 @@ def get_planning():
             print(f"[DEBUG] Planning ID {p.id} | Depósito: {p.depot.name if p.depot else 'N/A'}")
         return planning
     
+def get_order():
+    with Session() as session:
+        orders = session.query(Orders).all()
+        logger.info(f"[INFO] {len(orders)} pedidos recuperados")
+        for o in orders:
+            print(f"ID: {o.id}, Status: {o.status.name}, Cliente: {o.customer.name if o.customer else 'N/A'}, "
+                  f"Demanda: {o.demand}, Criado em: {o.created_at}, "
+                  f"Planning ID: {o.planning_id}, Route ID: {o.route_id}, Posição: {o.sequence_position}")
+        return orders
+
+def get_routes():
+    with Session() as session:
+        routes = session.query(Routes)\
+            .options(joinedload(Routes.vehicle), joinedload(Routes.planning))\
+            .all()
+        for r in routes:
+            print(f"ID: {r.id}, Veículo: {r.vehicle.plate if r.vehicle else 'N/A'}, "
+                  f"Planejamento: {r.planning.id if r.planning else 'N/A'}, Status: {r.status}, "
+                  f"Descrição: {r.description}")
+        return routes
+
 #ADD das tabelas
 def add_costumers(name: str, email: str, address: str, latitude: float, longitude: float):
     with Session() as session:
@@ -81,26 +103,69 @@ def add_vehicle(model: str, plate: str, capacity: int, cost_per_km: float, depot
         else:
             logger.info('Veículo ja existente')
 
+def add_planning(depot_id: int, deadline: Optional[datetime], status_str: str = "pending"):
+    with Session() as session:
+        try:
+            planning = Planning(
+                depot_id=depot_id,
+                deadline=deadline,
+                status=PlanningStatus[status_str],
+                created_at=datetime.now(timezone.utc)
+            )
+            session.add(planning)
+            session.commit()
+            logger.info(f"Planning criado com id={planning.id}")
+            return planning
+        except KeyError:
+            logger.error(f"Status '{status_str}' é inválido. Use: {[s.name for s in PlanningStatus]}")
+        except Exception as e:
+            logger.error(f"Erro ao adicionar planning: {e}")
 
-def add_planning(depot_id: int, deadline: datetime | None = None):
-    try:
-        session = Session()
-
-        planning = Planning(
-            depot_id=depot_id,
-            deadline=deadline,
-            status=PlanningStatus.pending,
-            created_at=datetime.now(timezone.utc)
+def add_order(customer_id: int, demand: int = 1, planning_id: Optional[int] = None, route_id: Optional[int] = None, sequence_position: Optional[int] = None):
+    with Session() as session:
+        customer = session.query(Costumers).filter(Costumers.id == customer_id).first()
+        if not customer:
+            logger.error(f"Cliente id={customer_id} não encontrado para novo pedido")
+            return None
+        new_order = Orders(
+            customer_id=customer_id,
+            demand=demand,
+            planning_id=planning_id,
+            route_id=route_id,
+            sequence_position=sequence_position,
+            created_at=datetime.now(timezone.utc),
+            status=OrderStatus.pending  # Assumindo OrderStatus importado e existente
         )
-
-        session.add(planning)
+        session.add(new_order)
         session.commit()
-        session.close()
+        logger.info(f"Pedido criado com id={new_order.id} para cliente id={customer_id}")
+        return new_order
 
-        print("Planning cadastrado com sucesso!")
-
-    except Exception as e:
-        print(f"Erro ao cadastrar planning: {e}")
+def add_route(planning_id: int, vehicle_plate: str, status: str = "active", description: Optional[str] = None):
+    with Session() as session:
+        vehicle = session.query(Vehicles).filter(Vehicles.plate == vehicle_plate).first()
+        planning = session.query(Planning).filter(Planning.id == planning_id).first()
+        if not vehicle:
+            print(f"Veículo com placa '{vehicle_plate}' não encontrado.")
+            return None
+        if not planning:
+            print(f"Planejamento id={planning_id} não encontrado.")
+            return None
+        try:
+            route_status = RouteStatus[status]
+        except KeyError:
+            print(f"Status '{status}' inválido para rota.")
+            return None
+        new_route = Routes(
+            planning_id=planning.id,
+            vehicle_id=vehicle.id,
+            status=route_status,
+            description=description
+        )
+        session.add(new_route)
+        session.commit()
+        print(f"Rota criada com id={new_route.id}")
+        return new_route
 
 #UPT das tabelas
 def upd_customer(cust_id: int, new_name: str, new_email: str, new_address: str,
@@ -139,7 +204,7 @@ def upd_vehicle(vehicle_id: int, model: str, plate: str, capacity: int, cost_per
             logger.info(f"Veículo id={vehicle_id} atualizado")
         return v
 
-def update_planning(planning_id: int, depot_id: int, deadline: datetime | None, status_str: str):
+def update_planning(planning_id: int, depot_id: int, deadline: Optional[datetime], status_str: str):
     """
     Atualiza os campos de um planejamento existente.
     Retorna o planejamento atualizado ou None se não encontrado.
@@ -159,6 +224,52 @@ def update_planning(planning_id: int, depot_id: int, deadline: datetime | None, 
         else:
             logger.warning(f"Planejamento id={planning_id} não encontrado para update")
         return planning
+
+def update_order(order_id: int, demand: int, status_str: str,
+                 planning_id: int | None = None,
+                 route_id: int | None = None,
+                 sequence_position: int | None = None):
+    with Session() as session:
+        order = session.query(Orders).filter(Orders.id == order_id).first()
+        if not order:
+            return None
+
+        order.demand = demand
+        order.status = OrderStatus[status_str]
+        order.planning_id = planning_id
+        order.route_id = route_id
+        order.sequence_position = sequence_position
+        session.commit()
+        return order
+    
+def update_route(route_id: int, planning_id: int, vehicle_plate: str, status: str = "active", description: Optional[str] = None):
+    with Session() as session:
+        route = session.query(Routes).filter(Routes.id == route_id).first()
+        if not route:
+            print(f"Rota id={route_id} não encontrada para atualização.")
+            return None
+        
+        vehicle = session.query(Vehicles).filter(Vehicles.plate == vehicle_plate).first()
+        planning = session.query(Planning).filter(Planning.id == planning_id).first()
+        if not vehicle:
+            print(f"Veículo com placa '{vehicle_plate}' não encontrado.")
+            return None
+        if not planning:
+            print(f"Planejamento id={planning_id} não encontrado.")
+            return None
+        try:
+            route_status = RouteStatus[status]
+        except KeyError:
+            print(f"Status '{status}' inválido para rota.")
+            return None
+
+        route.planning_id = planning.id
+        route.vehicle_id = vehicle.id
+        route.status = route_status
+        route.description = description
+        session.commit()
+        print(f"Rota id={route.id} atualizada.")
+        return route
 
 #TOG das tabelas
 def tog_customer_active(cust_id: int, active: bool):
@@ -191,3 +302,14 @@ def tog_vehicle_active(vehicle_id: int, active: bool):
             session.commit()
             logger.info(f"Veículo id={vehicle_id} set active={active}")
         return v
+    
+def tog_order_active(order_id: int, active: bool):
+    with Session() as session:
+        order = session.query(Orders).filter(Orders.id == order_id).first()
+        if not order:
+            logger.warning(f"Pedido id={order_id} não encontrado para toggle")
+            return None
+        order.active = active
+        session.commit()
+        logger.info(f"Pedido id={order_id} set active={active}")
+        return order
